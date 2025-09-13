@@ -1,8 +1,6 @@
 Attribute VB_Name = "Module1"
 Option Explicit
 
-'==================== CELL MAP (place these FIRST) ====================
-' Panel 1 (Top)
 Public Const P1_ROOM As String = "E2"
 Public Const P1_DATE As String = "E3"
 Public Const P1_WU   As String = "C5"
@@ -15,8 +13,8 @@ Public Const P1_RFAM As String = "E8"
 Public Const P1_FINEIN  As String = "C9"
 Public Const P1_FINEAMT As String = "E9"
 Public Const P1_TOT  As String = "E11"
+Public Const P1_OWNER As String = "B3"
 
-' Panel 2 (Middle)
 Public Const P2_ROOM As String = "E13"
 Public Const P2_DATE As String = "E14"
 Public Const P2_WU   As String = "C16"
@@ -29,8 +27,8 @@ Public Const P2_RFAM As String = "E19"
 Public Const P2_FINEIN  As String = "C20"
 Public Const P2_FINEAMT As String = "E20"
 Public Const P2_TOT  As String = "E22"
+Public Const P2_OWNER As String = "B14"
 
-' Panel 3 (Bottom)
 Public Const P3_ROOM As String = "E24"
 Public Const P3_DATE As String = "E25"
 Public Const P3_WU   As String = "C27"
@@ -43,9 +41,8 @@ Public Const P3_RFAM As String = "E30"
 Public Const P3_FINEIN  As String = "C31"
 Public Const P3_FINEAMT As String = "E31"
 Public Const P3_TOT  As String = "E33"
-'=====================================================================
+Public Const P3_OWNER As String = "B25"
 
-'==================== RATES & FORMAT ====================
 Public Const WATER_RATE  As Double = 28
 Public Const ELEC_RATE   As Double = 10
 Public Const GARBAGE_FEE As Double = 20
@@ -53,9 +50,88 @@ Public Const GARBAGE_FEE As Double = 20
 Private Function BahtFmt() As String
     BahtFmt = ChrW(3647) & "#,##0"
 End Function
-'=======================================================
 
-'==================== ROOM RULE =========================
+Private Sub ClearEach(ws As Worksheet, ParamArray addrs())
+    Dim i As Long
+    For i = LBound(addrs) To UBound(addrs)
+        If Len(addrs(i) & vbNullString) > 0 Then
+            ws.Range(CStr(addrs(i))).MergeArea.ClearContents
+        End If
+    Next i
+End Sub
+
+Private Sub SetValueMerged(ws As Worksheet, ByVal addr As String, ByVal v As Variant)
+    ws.Range(addr).MergeArea.Value = v
+End Sub
+
+Public Sub ForceBillDateFormat(Optional ByVal ws As Worksheet)
+    If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets("Bill")
+    On Error Resume Next
+    ws.Range(P1_DATE & "," & P2_DATE & "," & P3_DATE).NumberFormat = "mm/yyyy"
+    On Error GoTo 0
+End Sub
+
+Public Sub AutoFillCurrentMonth(Optional ByVal ws As Worksheet)
+    If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets("Bill")
+    Dim curMonth As Date: curMonth = DateSerial(Year(Date), Month(Date), 1)
+
+    Application.EnableEvents = False
+    On Error GoTo Done
+
+    Dim c As Range
+    For Each c In ws.Range(P1_DATE & "," & P2_DATE & "," & P3_DATE).Cells
+        If Len(Trim$(c.Value & "")) = 0 Or Not IsDate(c.Value) Then
+            c.Value = curMonth
+        End If
+        c.NumberFormat = "mm/yyyy"
+    Next c
+
+Done:
+    Application.EnableEvents = True
+End Sub
+
+Public Function OwnerFromNameSheet(ByVal roomValue As Variant) As String
+    Dim ws As Worksheet, f As Range, key As String, v As Variant
+    On Error GoTo EH
+
+    Set ws = ThisWorkbook.Worksheets("Name")
+    key = Trim$(CStr(roomValue))
+
+    Set f = ws.Columns("A").Find(What:=key, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
+    If Not f Is Nothing Then
+        OwnerFromNameSheet = Trim$(CStr(f.Offset(0, 1).Value))
+        Exit Function
+    End If
+
+    v = Application.VLookup(key, ws.Range("A:B"), 2, False)
+    If IsError(v) Then
+        OwnerFromNameSheet = ""
+    Else
+        OwnerFromNameSheet = Trim$(CStr(v))
+    End If
+    Exit Function
+EH:
+    OwnerFromNameSheet = ""
+End Function
+
+Public Sub RefreshOwnerNames(Optional ByVal ws As Worksheet)
+    If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets("Bill")
+    Application.EnableEvents = False
+    On Error GoTo Done
+
+    Dim v1 As String, v2 As String, v3 As String
+    v1 = IIf(Len(Trim$(ws.Range(P1_ROOM).Value)) = 0, "", OwnerFromNameSheet(ws.Range(P1_ROOM).Value))
+    v2 = IIf(Len(Trim$(ws.Range(P2_ROOM).Value)) = 0, "", OwnerFromNameSheet(ws.Range(P2_ROOM).Value))
+    v3 = IIf(Len(Trim$(ws.Range(P3_ROOM).Value)) = 0, "", OwnerFromNameSheet(ws.Range(P3_ROOM).Value))
+
+    SetValueMerged ws, P1_OWNER, v1
+    SetValueMerged ws, P2_OWNER, v2
+    SetValueMerged ws, P3_OWNER, v3
+
+Done:
+    Application.EnableEvents = True
+End Sub
+
 Private Function RoomRate(ByVal room As String, ByRef isManual As Boolean) As Double
     Dim letter As String, num As Long, i As Long
     room = UCase$(Trim$(room))
@@ -92,9 +168,7 @@ Private Function RoomRate(ByVal room As String, ByRef isManual As Boolean) As Do
             isManual = True: RoomRate = 0
     End Select
 End Function
-'=======================================================
 
-'==================== CORE CALC =========================
 Private Sub CalcPanel(roomCell As String, dateCell As String, _
                       wuCell As String, wAmtCell As String, _
                       euCell As String, eAmtCell As String, _
@@ -152,9 +226,7 @@ Public Sub CalcP1(): CalcPanel P1_ROOM, P1_DATE, P1_WU, P1_WAMT, P1_EU, P1_EAMT,
 Public Sub CalcP2(): CalcPanel P2_ROOM, P2_DATE, P2_WU, P2_WAMT, P2_EU, P2_EAMT, P2_GARB, P2_RFIN, P2_RFAM, P2_FINEIN, P2_FINEAMT, P2_TOT, "Panel 2": End Sub
 Public Sub CalcP3(): CalcPanel P3_ROOM, P3_DATE, P3_WU, P3_WAMT, P3_EU, P3_EAMT, P3_GARB, P3_RFIN, P3_RFAM, P3_FINEIN, P3_FINEAMT, P3_TOT, "Panel 3": End Sub
 Public Sub CalcAll():  CalcP1: CalcP2: CalcP3: End Sub
-'=======================================================
 
-'==================== SAVE + PRINT + CLEAR ===============
 Private Sub SaveOneRow(wsH As Worksheet, d As Variant, room As String, _
                        wu As Double, wAmt As Double, eu As Double, eAmt As Double, _
                        garb As Double, roomFee As Double, fine As Double, total As Double)
@@ -180,6 +252,8 @@ Public Sub SaveAllPanelsToHistorAndPrint()
     Dim wsB As Worksheet, wsH As Worksheet
     Set wsB = ThisWorkbook.Worksheets("Bill")
 
+    AutoFillCurrentMonth wsB
+    ForceBillDateFormat wsB
     CalcAll
 
     On Error Resume Next
@@ -201,32 +275,34 @@ Public Sub SaveAllPanelsToHistorAndPrint()
     If Trim$(wsB.Range(P3_ROOM).Value) <> "" Then SaveOneRow wsH, wsB.Range(P3_DATE).Value, wsB.Range(P3_ROOM).Value, _
         Val(wsB.Range(P3_WU).Value), Val(wsB.Range(P3_WAMT).Value), Val(wsB.Range(P3_EU).Value), Val(wsB.Range(P3_EAMT).Value), _
         Val(wsB.Range(P3_GARB).Value), Val(wsB.Range(P3_RFAM).Value), Val(wsB.Range(P3_FINEAMT).Value), Val(wsB.Range(P3_TOT).Value)
-
     wsB.PrintOut
-    ClearAllPanels
+    ClearAllPanels wsB
 End Sub
 
 Public Sub ClearAllPanels(Optional ws As Worksheet = Nothing)
     If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets("Bill")
     Application.EnableEvents = False
-    ' P1
-    ws.Range(P1_DATE & "," & P1_ROOM & "," & P1_WU & "," & P1_EU & "," & P1_RFIN & "," & P1_FINEIN).ClearContents
+
+    ClearEach ws, P1_DATE, P1_ROOM, P1_WU, P1_EU, P1_RFIN, P1_FINEIN, P1_OWNER
     ws.Range(P1_WAMT & "," & P1_EAMT & "," & P1_GARB & "," & P1_RFAM & "," & P1_FINEAMT & "," & P1_TOT).ClearContents
-    ' P2
-    ws.Range(P2_DATE & "," & P2_ROOM & "," & P2_WU & "," & P2_EU & "," & P2_RFIN & "," & P2_FINEIN).ClearContents
+
+    ClearEach ws, P2_DATE, P2_ROOM, P2_WU, P2_EU, P2_RFIN, P2_FINEIN, P2_OWNER
     ws.Range(P2_WAMT & "," & P2_EAMT & "," & P2_GARB & "," & P2_RFAM & "," & P2_FINEAMT & "," & P2_TOT).ClearContents
-    ' P3
-    ws.Range(P3_DATE & "," & P3_ROOM & "," & P3_WU & "," & P3_EU & "," & P3_RFIN & "," & P3_FINEIN).ClearContents
+
+    ClearEach ws, P3_DATE, P3_ROOM, P3_WU, P3_EU, P3_RFIN, P3_FINEIN, P3_OWNER
     ws.Range(P3_WAMT & "," & P3_EAMT & "," & P3_GARB & "," & P3_RFAM & "," & P3_FINEAMT & "," & P3_TOT).ClearContents
+
     Application.EnableEvents = True
+
+    AutoFillCurrentMonth ws
 End Sub
 
-' Utilities
 Public Sub ResetAppState()
     Application.EnableEvents = True
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
     MsgBox "Events ON & AutoCalc ON", vbInformation
 End Sub
+
 
 
