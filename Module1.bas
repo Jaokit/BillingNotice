@@ -47,6 +47,21 @@ Public Const WATER_RATE  As Double = 28
 Public Const ELEC_RATE   As Double = 10
 Public Const GARBAGE_FEE As Double = 20
 
+Public Const P1_WPREV As String = "G5"
+Public Const P1_WCURR As String = "H5"
+Public Const P1_EPREV As String = "G6"
+Public Const P1_ECURR As String = "H6"
+
+Public Const P2_WPREV As String = "G16"
+Public Const P2_WCURR As String = "H16"
+Public Const P2_EPREV As String = "G17"
+Public Const P2_ECURR As String = "H17"
+
+Public Const P3_WPREV As String = "G27"
+Public Const P3_WCURR As String = "H27"
+Public Const P3_EPREV As String = "G28"
+Public Const P3_ECURR As String = "H28"
+
 Private Function BahtFmt() As String
     BahtFmt = ChrW(3647) & "#,##0"
 End Function
@@ -169,6 +184,40 @@ Private Function RoomRate(ByVal room As String, ByRef isManual As Boolean) As Do
     End Select
 End Function
 
+Private Sub ComputeUsage(ByVal ws As Worksheet, ByVal prevAddr As String, _
+                         ByVal currAddr As String, ByVal outUsageAddr As String)
+    Dim p As Variant, c As Variant
+    p = ws.Range(prevAddr).Value
+    c = ws.Range(currAddr).Value
+
+    On Error Resume Next
+    ws.Range(prevAddr).Interior.ColorIndex = xlNone
+    ws.Range(currAddr).Interior.ColorIndex = xlNone
+    On Error GoTo 0
+
+    If IsNumeric(p) And IsNumeric(c) Then
+        If Val(c) >= Val(p) Then
+            ws.Range(outUsageAddr).Value = Val(c) - Val(p)
+        Else
+            ws.Range(outUsageAddr).ClearContents
+            ws.Range(prevAddr).Interior.Color = RGB(255, 220, 220)
+            ws.Range(currAddr).Interior.Color = RGB(255, 220, 220)
+        End If
+    End If
+End Sub
+
+Public Sub UpdateUsageFromReadings(Optional ByVal ws As Worksheet = Nothing)
+    If ws Is Nothing Then Set ws = ThisWorkbook.Worksheets("Bill")
+    ' ???
+    ComputeUsage ws, P1_WPREV, P1_WCURR, P1_WU
+    ComputeUsage ws, P2_WPREV, P2_WCURR, P2_WU
+    ComputeUsage ws, P3_WPREV, P3_WCURR, P3_WU
+    ' ??
+    ComputeUsage ws, P1_EPREV, P1_ECURR, P1_EU
+    ComputeUsage ws, P2_EPREV, P2_ECURR, P2_EU
+    ComputeUsage ws, P3_EPREV, P3_ECURR, P3_EU
+End Sub
+
 Private Sub CalcPanel(roomCell As String, dateCell As String, _
                       wuCell As String, wAmtCell As String, _
                       euCell As String, eAmtCell As String, _
@@ -254,6 +303,7 @@ Public Sub SaveAllPanelsToHistorAndPrint()
 
     AutoFillCurrentMonth wsB
     ForceBillDateFormat wsB
+    UpdateUsageFromReadings wsB
     CalcAll
 
     On Error Resume Next
@@ -275,6 +325,7 @@ Public Sub SaveAllPanelsToHistorAndPrint()
     If Trim$(wsB.Range(P3_ROOM).Value) <> "" Then SaveOneRow wsH, wsB.Range(P3_DATE).Value, wsB.Range(P3_ROOM).Value, _
         Val(wsB.Range(P3_WU).Value), Val(wsB.Range(P3_WAMT).Value), Val(wsB.Range(P3_EU).Value), Val(wsB.Range(P3_EAMT).Value), _
         Val(wsB.Range(P3_GARB).Value), Val(wsB.Range(P3_RFAM).Value), Val(wsB.Range(P3_FINEAMT).Value), Val(wsB.Range(P3_TOT).Value)
+
     wsB.PrintOut
     ClearAllPanels wsB
 End Sub
@@ -292,8 +343,16 @@ Public Sub ClearAllPanels(Optional ws As Worksheet = Nothing)
     ClearEach ws, P3_DATE, P3_ROOM, P3_WU, P3_EU, P3_RFIN, P3_FINEIN, P3_OWNER
     ws.Range(P3_WAMT & "," & P3_EAMT & "," & P3_GARB & "," & P3_RFAM & "," & P3_FINEAMT & "," & P3_TOT).ClearContents
 
-    Application.EnableEvents = True
+    ws.Range(P1_WPREV & "," & P1_WCURR & "," & P1_EPREV & "," & P1_ECURR & "," & _
+             P2_WPREV & "," & P2_WCURR & "," & P2_EPREV & "," & P2_ECURR & "," & _
+             P3_WPREV & "," & P3_WCURR & "," & P3_EPREV & "," & P3_ECURR).ClearContents
+    On Error Resume Next
+    ws.Range(P1_WPREV & "," & P1_WCURR & "," & P1_EPREV & "," & P1_ECURR & "," & _
+             P2_WPREV & "," & P2_WCURR & "," & P2_EPREV & "," & P2_ECURR & "," & _
+             P3_WPREV & "," & P3_WCURR & "," & P3_EPREV & "," & P3_ECURR).Interior.ColorIndex = xlNone
+    On Error GoTo 0
 
+    Application.EnableEvents = True
     AutoFillCurrentMonth ws
 End Sub
 
@@ -303,6 +362,5 @@ Public Sub ResetAppState()
     Application.ScreenUpdating = True
     MsgBox "Events ON & AutoCalc ON", vbInformation
 End Sub
-
 
 
